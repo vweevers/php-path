@@ -16,6 +16,8 @@ class Path {
       $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
       self::$adapter = $isWindows ? new Adapter\Windows : new Adapter\Posix;
     }
+
+    return self::$adapter;
   }
 
   // resolve([from ...], to)          (nodejs signature)

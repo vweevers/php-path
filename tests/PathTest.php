@@ -10,7 +10,7 @@ class PathTest extends \PHPUnit_Framework_TestCase {
 
   public function testIsInside() {
     Path::selectAdapter($this->posix);
-    
+
     $this->assertTrue(Path::isInside('/path/foo', '/path'));
     $this->assertTrue(Path::isInside('/path/foo/', '/path'));
     $this->assertTrue(Path::isInside('/path/foo', '/path/'));
@@ -26,8 +26,9 @@ class PathTest extends \PHPUnit_Framework_TestCase {
   }
 
   public function testResolve() {
-    $test = function($resolveTests, $adapter) {
-      Path::selectAdapter($adapter);
+    $test = function($resolveTests, $adapter = null) {
+      $adapter = Path::selectAdapter($adapter);
+
       foreach($resolveTests as $test) {
         $actual = Path::resolve($test[0]);
         $expected = $test[1];
@@ -44,7 +45,6 @@ class PathTest extends \PHPUnit_Framework_TestCase {
          [['c:/ignore', 'd:\\a/b\\c/d', '\\e.exe'], 'd:\\e.exe'],
          [['c:/ignore', 'c:/some/file'], 'c:\\some\\file'],
          [['d:/ignore', 'd:some/dir//'], 'd:\\ignore\\some\\dir'],
-         [['.'], getcwd()],
          [['//server/share', '..', 'relative\\'], '\\\\server\\share\\relative'],
          [['c:/', '//'], 'c:\\'],
          [['c:/', '//dir'], 'c:\\dir'],
@@ -59,11 +59,17 @@ class PathTest extends \PHPUnit_Framework_TestCase {
         // arguments                                    result
         [[['/var/lib', '../', 'file/'], '/var/file'],
          [['/var/lib', '/../', 'file/'], '/file'],
-         [['a/b/c/', '../../..'], getcwd()],
-         [['.'], getcwd()],
          [['/some/dir', '.', '/absolute/'], '/absolute']];
 
     $test($posix, $this->posix);
+
+    // For these tests, the result depends on the OS and adapter
+    $cwdtests = [
+      [['.'], getcwd()],
+      [['a/b/c/', '../../..'], getcwd()]
+    ];
+
+    $test($cwdtests);
   }
 
   public function testIsAbsolute() {
