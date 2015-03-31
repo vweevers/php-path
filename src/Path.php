@@ -134,39 +134,37 @@ class Path {
   public static function join() {
     $paths = func_get_args();
     if (count($paths)===1 && is_array($paths[0])) $paths = $paths[0];
-
-    throw new \Exception('Not implemented');
-    return $this->adapter->join($paths);
+    return self::$adapter->join($paths);
   }
 
   public static function normalize($path) {
     throw new \Exception('Not implemented');
-    return $this->adapter->normalize($path);
+    return self::$adapter->normalize($path);
   }
 
   public static function dirname($path) {
     throw new \Exception('Not implemented');
-    return $this->adapter->dirname($path);
+    return self::$adapter->dirname($path);
   }
 
   public static function basename($path, $ext) {
     throw new \Exception('Not implemented');
-    return $this->adapter->basename($path, $ext);
+    return self::$adapter->basename($path, $ext);
   }
 
   public static function extname($path) {
     throw new \Exception('Not implemented');
-    return $this->adapter->extname($path);
+    return self::$adapter->extname($path);
   }
 
   public static function format(array $pathObject) {
     throw new \Exception('Not implemented');
-    return $this->adapter->format($path);
+    return self::$adapter->format($path);
   }
 
   public static function parse($pathString) {
     throw new \Exception('Not implemented');
-    return $this->adapter->parse($pathString);
+    return self::$adapter->parse($pathString);
   }
 }
 

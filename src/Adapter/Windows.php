@@ -181,67 +181,62 @@ class Windows extends AbstractAdapter implements AdapterInterface {
     return 'windows';
   }
 
+  public function join(array $paths) {
+    // foreach ($paths as $path) $this->assertPath($path);
+
+    $paths = array_filter($paths, function($path){
+      $this->assertPath($path);
+      return (bool) $path;
+    });
+
+    $joined = implode('\\', $paths);
+
+    // Make sure that the joined path doesn't start with two slashes, because
+    // normalize() will mistake it for an UNC path then.
+    //
+    // This step is skipped when it is very clear that the user actually
+    // intended to point at an UNC path. This is assumed when the first
+    // non-empty string arguments starts with exactly two slashes followed by
+    // at least one more non-slash character.
+    //
+    // Note that for normalize() to treat a path as an UNC path it needs to
+    // have at least 2 components, so we don't filter for that here.
+    // This means that the user can use join to construct UNC paths from
+    // a server name and a share name; for example:
+    //   path.join('//server', 'share') -> '\\\\server\\share\')
+    if (isset($paths[0]) && !preg_match('|^[\\\/]{2}[^\\\/]|', $paths[0])) {
+      $joined = preg_replace('|^[\\\/]{2,}|', '\\', $joined);
+    }
+
+    return $this->normalize($joined);
+  }
+
+  public function normalize($path) {
+    $this->assertPath($path);
+
+    $result = $this->preg_matches(self::splitDeviceRe, $path);
+    $device = isset($result[1]) ? $result[1] : '';
+    $isUnc = $device && (!isset($device[1]) || $device[1] !== ':');
+    $isAbsolute = $this->isAbsolute($path);
+    $tail = $result[3];
+    $trailingSlash = (bool) preg_match('|[\\\/]$|', $tail);
+
+    // Normalize the tail path
+    $tail = implode('\\', $this->normalizeArray(preg_split('|[\\\/]+|', $tail), !$isAbsolute));
+
+    if (!$tail && !$isAbsolute) $tail = '.';
+    if ($tail && $trailingSlash) $tail.= '\\';
+
+    // Convert slashes to backslashes when `device` points to an UNC root.
+    // Also squash multiple slashes into a single one where appropriate.
+    if ($isUnc) {
+      $device = $this->normalizeUNCRoot($device);
+    }
+
+    return $device . ($isAbsolute ? '\\' : '') . $tail;
+  }
+
   // Commented out code below is half-converted to PHP
-
-  // WinPath->normalize = function(path) {
-  //   static::assertPath($path);
-
-  //   $result = preg_match(static::splitDeviceRe, $path),
-  //       $device = $result[1] || '',
-  //       $isUnc = $device && $device[1] !== ':',
-  //       $isAbsolute = static::isAbsolute($path),
-  //       $tail = $result[3],
-  //       $trailingSlash = /[\\\/]$/.test($tail);
-
-  //   // Normalize the tail path
-  //   $tail = static::normalizeArray($tail.split(/[\\\/]+/), !$isAbsolute).join('\\');
-
-  //   if (!$tail && !$isAbsolute) {
-  //     $tail = '.';
-  //   }
-  //   if ($tail && $trailingSlash) {
-  //     $tail += '\\';
-  //   }
-
-  //   // Convert slashes to backslashes when `device` points to an UNC root.
-  //   // Also squash multiple slashes into a single one where appropriate.
-  //   if ($isUnc) {
-  //     $device = static::normalizeUNCRoot($device);
-  //   }
-
-  //   return $device . ($isAbsolute ? '\\' : '') . $tail;
-  // };
-
-  // WinPath->join = function() {
-  //   function f(p) {
-  //     if (typeof p !== 'string') {
-  //       throw new TypeError('Arguments to path.join must be strings');
-  //     }
-  //     return p;
-  //   }
-
-  //   $paths = Array.prototype.filter.call(arguments, f);
-  //   $joined = $paths.join('\\');
-
-  //   // Make sure that the joined path doesn't start with two slashes, because
-  //   // normalize() will mistake it for an UNC path then.
-  //   //
-  //   // This step is skipped when it is very clear that the user actually
-  //   // intended to point at an UNC path. This is assumed when the first
-  //   // non-empty string arguments starts with exactly two slashes followed by
-  //   // at least one more non-slash character.
-  //   //
-  //   // Note that for normalize() to treat a path as an UNC path it needs to
-  //   // have at least 2 components, so we don't filter for that here.
-  //   // This means that the user can use join to construct UNC paths from
-  //   // a server name and a share name; for example:
-  //   //   path.join('//server', 'share') -> '\\\\server\\share\')
-  //   if (!/^[\\\/]{2}[^\\\/]/.test($paths[0])) {
-  //     $joined = $joined.replace(/^[\\\/]{2,}/, '\\');
-  //   }
-
-  //   return WinPath->normalize($joined);
-  // };
 
   // WinPath->_makeLong = function(path) {
   //   // Note: this will *probably* throw somewhere.

@@ -29,6 +29,36 @@ class Posix extends AbstractAdapter implements AdapterInterface {
     return isset($path[0]) && $path[0] === '/';
   }
 
+  public function join(array $paths) {
+    $path = '';
+
+    foreach($paths as $segment) {
+      $this->assertPath($segment);
+
+      if ($segment) {
+        if (!$path) $path.= $segment;
+        else $path.= '/' . $segment;
+      }
+    }
+
+    return $this->normalize($path);
+  }
+
+  public function normalize($path) {
+    $this->assertPath($path);
+
+    $isAbsolute = $this->isAbsolute($path);
+    $trailingSlash = substr($path, -1) === '/';
+
+    // Normalize the path
+    $path = implode('/', $this->normalizeArray(explode('/', $path), !$isAbsolute));
+
+    if (!$path && !$isAbsolute) $path = '.';
+    if ($path && $trailingSlash) $path.= '/';
+
+    return ($isAbsolute ? '/' : '') . $path;
+  }
+
   public function resolve(array $paths) {
     $resolvedPath = '';
     $resolvedAbsolute = false;
@@ -97,43 +127,6 @@ class Posix extends AbstractAdapter implements AdapterInterface {
 }
 
 // Commented out code below is half-converted to PHP
-
-// $this->normalize = function(path) {
-//   $this->assertPath($path);
-
-//   $isAbsolute = $this->isAbsolute($path),
-//       $trailingSlash = $path.substr(-1) === '/';
-
-//   // Normalize the path
-//   $path = $this->normalizeArray($path.split('/'), !$isAbsolute).join('/');
-
-//   if (!$path && !$isAbsolute) {
-//     $path = '.';
-//   }
-//   if ($path && $trailingSlash) {
-//     $path += '/';
-//   }
-
-//   return ($isAbsolute ? '/' : '') + $path;
-// };
-
-// $this->join = function() {
-//   $path = '';
-//   for ($i = 0; i < func_num_args(); $i++) {
-//     $segment = $arguments[i];
-//     if (typeof $segment !== 'string') {
-//       throw new TypeError('Arguments to path.join must be strings');
-//     }
-//     if ($segment) {
-//       if (!$path) {
-//         $path += $segment;
-//       } else {
-//         $path += '/' + $segment;
-//       }
-//     }
-//   }
-//   return $this->normalize($path);
-// };
 
 // $this->dirname = function(path) {
 //   $result = posixSplitPath($path),

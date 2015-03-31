@@ -2,10 +2,13 @@
 
 namespace Weevers\Path;
 
+// TODO: swap expected/actual arguments for assertEquals (differs 
+// from node's `assert.equal`)
 class PathTest extends \PHPUnit_Framework_TestCase {
   public function setUp() {
     $this->windows = new Adapter\Windows;
     $this->posix = new Adapter\Posix;
+    $this->isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
   }
 
   public function testIsInside() {
@@ -143,6 +146,142 @@ class PathTest extends \PHPUnit_Framework_TestCase {
          ['/', '/var/lib', 'var/lib']];
 
     $test($posix, $this->posix);
+  }
+
+  public function testJoin() {
+    $joinTests = [
+      // arguments                    result
+      [['.', 'x/b', '..', '/b/c.js'], 'x/b/c.js'],
+      [['/.', 'x/b', '..', '/b/c.js'], '/x/b/c.js'],
+      [['/foo', '../../../bar'], '/bar'],
+      [['foo', '../../../bar'], '../../bar'],
+      [['foo/', '../../../bar'], '../../bar'],
+      [['foo/x', '../../../bar'], '../bar'],
+      [['foo/x', './bar'], 'foo/x/bar'],
+      [['foo/x/', './bar'], 'foo/x/bar'],
+      [['foo/x/', '.', 'bar'], 'foo/x/bar'],
+      [['./'], './'],
+      [['.', './'], './'],
+      [['.', '.', '.'], '.'],
+      [['.', './', '.'], '.'],
+      [['.', '/./', '.'], '.'],
+      [['.', '/////./', '.'], '.'],
+      [['.'], '.'],
+      [['', '.'], '.'],
+      [['', 'foo'], 'foo'],
+      [['foo', '/bar'], 'foo/bar'],
+      [['', '/foo'], '/foo'],
+      [['', '', '/foo'], '/foo'],
+      [['', '', 'foo'], 'foo'],
+      [['foo', ''], 'foo'],
+      [['foo/', ''], 'foo/'],
+      [['foo', '', '/bar'], 'foo/bar'],
+      [['./', '..', '/foo'], '../foo'],
+      [['./', '..', '..', '/foo'], '../../foo'],
+      [['.', '..', '..', '/foo'], '../../foo'],
+      [['', '..', '..', '/foo'], '../../foo'],
+      [['/'], '/'],
+      [['/', '.'], '/'],
+      [['/', '..'], '/'],
+      [['/', '..', '..'], '/'],
+      [[''], '.'],
+      [['', ''], '.'],
+      [[' /foo'], ' /foo'],
+      [[' ', 'foo'], ' /foo'],
+      [[' ', '.'], ' '],
+      [[' ', '/'], ' /'],
+      [[' ', ''], ' '],
+      [['/', 'foo'], '/foo'],
+      [['/', '/foo'], '/foo'],
+      [['/', '//foo'], '/foo'],
+      [['/', '', '/foo'], '/foo'],
+      [['', '/', 'foo'], '/foo'],
+      [['', '/', '/foo'], '/foo']
+    ];
+
+    // Windows-specific join tests
+    $windowsTests = [
+      // UNC path expected
+      [['//foo/bar'], '//foo/bar/'],
+      [['\\/foo/bar'], '//foo/bar/'],
+      [['\\\\foo/bar'], '//foo/bar/'],
+      // UNC path expected - server and share separate
+      [['//foo', 'bar'], '//foo/bar/'],
+      [['//foo/', 'bar'], '//foo/bar/'],
+      [['//foo', '/bar'], '//foo/bar/'],
+      // UNC path expected - questionable
+      [['//foo', '', 'bar'], '//foo/bar/'],
+      [['//foo/', '', 'bar'], '//foo/bar/'],
+      [['//foo/', '', '/bar'], '//foo/bar/'],
+      // UNC path expected - even more questionable
+      [['', '//foo', 'bar'], '//foo/bar/'],
+      [['', '//foo/', 'bar'], '//foo/bar/'],
+      [['', '//foo/', '/bar'], '//foo/bar/'],
+      // No UNC path expected (no double slash in first component)
+      [['\\', 'foo/bar'], '/foo/bar'],
+      [['\\', '/foo/bar'], '/foo/bar'],
+      [['', '/', '/foo/bar'], '/foo/bar'],
+      // No UNC path expected (no non-slashes in first component - questionable)
+      [['//', 'foo/bar'], '/foo/bar'],
+      [['//', '/foo/bar'], '/foo/bar'],
+      [['\\\\', '/', '/foo/bar'], '/foo/bar'],
+      [['//'], '/'],
+      // No UNC path expected (share name missing - questionable).
+      [['//foo'], '/foo'],
+      [['//foo/'], '/foo/'],
+      [['//foo', '/'], '/foo/'],
+      [['//foo', '', '/'], '/foo/'],
+      // No UNC path expected (too many leading slashes - questionable)
+      [['///foo/bar'], '/foo/bar'],
+      [['////foo', 'bar'], '/foo/bar'],
+      [['\\\\\\/foo/bar'], '/foo/bar'],
+      // Drive-relative vs drive-absolute paths. This merely describes the
+      // status quo, rather than being obviously right
+      [['c:'], 'c:.'],
+      [['c:.'], 'c:.'],
+      [['c:', ''], 'c:.'],
+      [['', 'c:'], 'c:.'],
+      [['c:.', '/'], 'c:./'],
+      [['c:.', 'file'], 'c:file'],
+      [['c:', '/'], 'c:/'],
+      [['c:', 'file'], 'c:/file']
+    ];
+
+    foreach($joinTests as $test) {
+      $adapter = $this->posix;
+      $message = "{$adapter}->join(" . json_encode($test[0]) . ')';                    
+      $this->assertEquals($test[1], $adapter->join($test[0]), $message);
+
+      $adapter = $this->windows;
+      $message = "{$adapter}->join(" . json_encode($test[0]) . ')';
+      $expected = str_replace('/', '\\', $test[1]);
+      $this->assertEquals($expected, $adapter->join($test[0]), $message);
+    }
+
+    foreach($windowsTests as $test) {
+      $adapter = $this->windows;
+      $message = "{$adapter}->join(" . json_encode($test[0]) . ')';
+      $expected = str_replace('/', '\\', $test[1]);
+      $this->assertEquals($expected, $adapter->join($test[0]), $message);
+    }
+  }
+
+  public function testNormalize() {
+    $this->assertEquals($this->windows->normalize('./fixtures///b/../b/c.js'),
+                 'fixtures\\b\\c.js');
+    $this->assertEquals($this->windows->normalize('/foo/../../../bar'), '\\bar');
+    $this->assertEquals($this->windows->normalize('a//b//../b'), 'a\\b');
+    $this->assertEquals($this->windows->normalize('a//b//./c'), 'a\\b\\c');
+    $this->assertEquals($this->windows->normalize('a//b//.'), 'a\\b');
+    $this->assertEquals($this->windows->normalize('//server/share/dir/file.ext'),
+                 '\\\\server\\share\\dir\\file.ext');
+
+    $this->assertEquals($this->posix->normalize('./fixtures///b/../b/c.js'),
+                 'fixtures/b/c.js');
+    $this->assertEquals($this->posix->normalize('/foo/../../../bar'), '/bar');
+    $this->assertEquals($this->posix->normalize('a//b//../b'), 'a/b');
+    $this->assertEquals($this->posix->normalize('a//b//./c'), 'a/b/c');
+    $this->assertEquals($this->posix->normalize('a//b//.'), 'a/b');
   }
 
   public function testReadme() {
