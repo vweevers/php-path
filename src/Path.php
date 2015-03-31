@@ -138,7 +138,6 @@ class Path {
   }
 
   public static function normalize($path) {
-    throw new \Exception('Not implemented');
     return self::$adapter->normalize($path);
   }
 
