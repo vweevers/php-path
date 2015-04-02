@@ -4,13 +4,7 @@ namespace Weevers\Path;
 
 // TODO: swap expected/actual arguments for assertEquals (differs 
 // from node's `assert.equal`)
-class PathTest extends \PHPUnit_Framework_TestCase {
-  public function setUp() {
-    $this->windows = new Adapter\Windows;
-    $this->posix = new Adapter\Posix;
-    $this->isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-  }
-
+class PathTest extends AbstractTest {
   public function testIsInside() {
     Path::selectAdapter($this->posix);
 
@@ -284,12 +278,23 @@ class PathTest extends \PHPUnit_Framework_TestCase {
     $this->assertEquals($this->posix->normalize('a//b//.'), 'a/b');
   }
 
-  public function testReadme() {
-    Path::selectAdapter($this->posix);
+  public function testGetPrefix() {
+    $paths = [
+      'file://foo' => 'file://',
+      'file:///foo' => 'file://',
+      'file://file://foo' => 'file://',
+      'glob://file://foo' => 'glob://file://',
+      'foo' => 'file://',
+      '//foo' => 'file://',
+      'invalid:\\foo' => 'file://',
+      'compress.zlib://php://temp' => 'compress.zlib://php://'
+    ];
 
-    $this->assertEquals('../../tolerate/php', 
-      Path::relative('i/love/node', 'i/tolerate/php'));
-    $this->assertEquals('/cwd/ugh/sigh/alright', 
-      Path::resolve('/cwd', 'ugh/beep', '../sigh', 'alright')); 
+    foreach($paths as $path => $expected) {
+      $this->assertEquals($expected, Path::getPrefix($path));
+    }
+
+    $this->assertEquals('beep://', Path::getPrefix('foo', 'beep://'));
+    $this->assertEquals('file://', Path::getPrefix('file://foo', 'beep://'));
   }
 }

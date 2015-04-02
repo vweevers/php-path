@@ -6,15 +6,23 @@ namespace Weevers\Path;
 // https://github.com/iojs/io.js/blob/8de78e470d2e291454e2184d7f206c70d4cb8c97/lib/path.js
 
 class Path {
+  const scheme_re = '|^[^/\\\]{2,}://|';
+
   private static $adapter;
+  private static $posix;
 
   public static function selectAdapter($adapter = null) {
+    if (self::$posix === null) {
+      // Posix adapter is always used for remote streams
+      self::$posix = new Adapter\Posix;
+    }
+
     if ($adapter !== null) {
-      // mainly for unit tests
+      // Mainly for unit tests
       self::$adapter = is_object($adapter) ? $adapter : new $adapter;
     } else {
       $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-      self::$adapter = $isWindows ? new Adapter\Windows : new Adapter\Posix;
+      self::$adapter = $isWindows ? new Adapter\Windows : self::$posix;
     }
 
     return self::$adapter;
@@ -26,50 +34,76 @@ class Path {
     $paths = func_get_args();
     if (count($paths)===1 && is_array($paths[0])) $paths = $paths[0];
 
-    $outPrefix = '';
+    $prefix = [];
+    $imploded = null;
+    $stripped = [];
 
-    // Support URL wrappers. Strip all schemes, and prepend the 
+    // Strip all stream wrapper schemes, and prepend the
     // last found scheme to the resolved path.
-    $paths = array_map(function($path) use (&$outPrefix){
-      $prefix = '';
-      $path = self::stripScheme($path, $prefix);
-      if ($prefix) $outPrefix = $prefix;
-      return $path;
-    }, $paths);
+    foreach($paths as $path) {
+      $newPrefix = [];
+      $path = self::stripScheme($path, $newPrefix);
 
-    return $outPrefix . self::$adapter->resolve($paths);
-  }
+      if (count($newPrefix)) {
+        if ($imploded && $imploded!==implode('', $newPrefix)) {
+          // Switched scheme, so skip previous paths (like a root change)
+          $stripped = [];
+        }
 
-  private static function stripScheme($path, &$prefix = null, $expectedPrefix = null) {
-    if ($pos = strpos($path, '://')) { // not false and more than 0
-      $prefix = substr($path, 0, $pos+3);
-      $stripped = substr($path, $pos+3);
+        $prefix = $newPrefix;
+        $imploded = implode('', $prefix);
+      }
+
+      if ($path) $stripped[] = $path;
+    }
+
+    $nonDefault = array_filter($prefix, function($prefix){
+      return $prefix!=='file://';
+    });
+
+    if (count($nonDefault)===0) $prefix = [];
+
+    // Do a posix-style join for remote URLs and VFS streams
+    $nonAbsolutable = array_filter($prefix, function($prefix){
+      return $prefix==='vfs://' || !stream_is_local($prefix.'/foo');
+    });
+
+    if (count($nonAbsolutable)>0) {
+      $method = 'join';
+      $adapter = self::$posix;
     } else {
-      $prefix = '';
-      $stripped = $path;
+      $method = 'resolve';
+      $adapter = self::$adapter;
     }
 
-    if ($expectedPrefix!==null && !self::equalPrefixes($prefix, $expectedPrefix)) {
-      throw new \UnexpectedValueException(sprintf(
-        'Schemes do not match: expected "%s" for "%s"', $expectedPrefix, $path
-      ));
+    $resolved = $adapter->$method($stripped);
+
+    return implode('', $prefix) . $resolved;
+  }
+
+  private static function stripScheme($path, &$acc = []) {
+    if (preg_match(self::scheme_re, $path, $matches)) {
+      $prefix = strtolower($matches[0]);
+
+      // Skip repeated schemes ("file://file://")
+      if (!($l = count($acc)) || $prefix!==$acc[$l-1]) $acc[] = $prefix;
+
+      // Recurse in case of combined wrappers ("compress.zlib://php://temp")
+      return self::stripScheme(substr($path, strlen($prefix)), $acc);
     }
 
-    return $stripped;
+    return $path;
   }
 
-  public static function getScheme($path, $def = 'file') {
-    $pos = strpos($path, '://');
-    if (!$pos) return $def;
-    return substr($path, 0, $pos);
+  public static function getScheme($path) {
+    throw new \Exception('getScheme($path) is deprecated because a path can be prefixed '.
+      'with more than one scheme. Use getPrefix($path) instead.');
   }
 
-  private static function equalPrefixes($a, $b) {
-    // Default scheme is file
-    if ($a==='') $a = 'file://';
-    if ($b==='') $b = 'file://';
-
-    return $a === $b;
+  public static function getPrefix($path, $def = 'file://') {
+    $prefixes = [];
+    self::stripScheme($path, $prefixes);
+    return count($prefixes)>0 ? implode('', $prefixes) : $def;
   }
 
   public static function isAbsolute($path) {
@@ -77,12 +111,9 @@ class Path {
   }
 
   public static function relative($from, $to) {
-    $fromPrefix = ''; $toPrefix = '';
-
-    $strippedFrom = self::stripScheme($from, $fromPrefix);
-    $strippedTo = self::stripScheme($to, $toPrefix, $fromPrefix);
-
-    return self::$adapter->relative($strippedFrom, $strippedTo);
+    $from = self::stripScheme($from);
+    $to = self::stripScheme($to);
+    return self::$adapter->relative($from, $to);
   }
 
   public static function separator() {
@@ -100,10 +131,8 @@ class Path {
   // Adapted from github.com/sindresorhus/is-path-inside
   // and github.com/domenic/path-is-inside (TODO: credits)
   public static function isInside($path, $potentialParent) {
-    $prefix1 = ''; $prefix2 = '';
-
-    $path = self::resolve(self::stripScheme($path, $prefix1));
-    $potentialParent = self::resolve(self::stripScheme($potentialParent, $prefix2, $prefix1));
+    $path = self::resolve($path);
+    $potentialParent = self::resolve($potentialParent);
 
     if ($path===$potentialParent) return false;
 

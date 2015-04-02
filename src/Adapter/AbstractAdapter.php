@@ -18,7 +18,7 @@ abstract class AbstractAdapter {
   protected function assertPath($path) {
     if (!is_string($path)) {
       throw new \InvalidArgumentException(
-        'Path must be a string. Received '.$this->inspect($var)
+        'Path must be a string. Received '.$this->inspect($path)
       );
     }
   }
